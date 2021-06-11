@@ -153,11 +153,11 @@ def test_delete_live():
 
 def test_delete_development():
     for network_name in (
-        "development",
-        "mainnet-fork",
-        "bsc-main-fork",
-        "ftm-main-fork",
-        "geth-dev",
+            "development",
+            "mainnet-fork",
+            "bsc-main-fork",
+            "ftm-main-fork",
+            "geth-dev",
     ):
         cli_networks._delete(network_name)
 
