@@ -38,6 +38,30 @@ live:
         id: kotti
         host: https://www.ethercluster.com/kotti
         explorer: https://blockscout.com/etc/kotti/api
+  - name: Binance Smart Chain
+    networks:
+      - name: Testnet
+        chainid: 97
+        id: bsc-test
+        host: https://data-seed-prebsc-1-s1.binance.org:8545
+        explorer: https://api-testnet.bscscan.com/api
+      - name: Mainnet
+        chainid: 56
+        id: bsc-main
+        host: https://bsc-dataseed.binance.org
+        explorer: https://api.bscscan.com/api
+  - name: Fantom Opera
+    networks:
+      - name: Testnet
+        chainid: 0xfa2
+        id: ftm-test
+        host: https://rpc.testnet.fantom.network
+        explorer: https://explorer.testnet.fantom.network
+      - name: Mainnet
+        chainid: 250
+        id: ftm-main
+        host: https://rpcapi.fantom.network
+        explorer: https://api.ftmscan.com/api
 
 development:
   - name: Ganache-CLI
@@ -50,6 +74,12 @@ development:
       accounts: 10
       evm_version: istanbul
       mnemonic: brownie
+  - name: Geth Dev
+    id: geth-dev
+    cmd: ethnode
+    host: http://127.0.0.1
+    cmd_settings:
+      port: 8545
   - name: Ganache-CLI (Mainnet Fork)
     id: mainnet-fork
     cmd: ganache-cli
@@ -62,3 +92,27 @@ development:
       evm_version: istanbul
       mnemonic: brownie
       fork: mainnet
+  - name: Ganache-CLI (BSC-Mainnet Fork)
+    id: bsc-main-fork
+    cmd: ganache-cli
+    host: http://127.0.0.1
+    timeout: 120
+    cmd_settings:
+      port: 8545
+      gas_limit: 12000000
+      accounts: 10
+      evm_version: istanbul
+      mnemonic: brownie
+      fork: bsc-main
+  - name: Ganache-CLI (FTM-Mainnet Fork)
+    id: ftm-main-fork
+    cmd: ganache-cli
+    host: http://127.0.0.1
+    timeout: 120
+    cmd_settings:
+      port: 8545
+      gas_limit: 12000000
+      accounts: 10
+      evm_version: istanbul
+      mnemonic: brownie
+      fork: ftm-main

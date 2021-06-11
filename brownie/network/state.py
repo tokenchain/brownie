@@ -9,13 +9,13 @@ from sqlite3 import OperationalError
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 from hexbytes import HexBytes
-from requests.exceptions import ConnectionError as RequestsConnectionError
 from web3.types import BlockData
 
 from brownie._config import CONFIG, _get_data_folder
 from brownie._singleton import _Singleton
 from brownie.convert import Wei
-from brownie.exceptions import BrownieEnvironmentError, RPCRequestError
+from brownie.exceptions import BrownieEnvironmentError
+from brownie.network import rpc
 from brownie.project.build import DEPLOYMENT_KEYS
 from brownie.utils.sql import Cursor
 
@@ -148,24 +148,30 @@ class TxHistory(metaclass=_Singleton):
         """Returns a list of transactions where account is the sender or receiver"""
         return [i for i in self._list if i.receiver == account or i.sender == account]
 
-    def _gas(self, fn_name: str, gas_used: int) -> None:
-        if fn_name not in self.gas_profile:
-            self.gas_profile[fn_name] = {
-                "avg": gas_used,
-                "high": gas_used,
-                "low": gas_used,
-                "count": 1,
-            }
+    def _gas(self, fn_name: str, gas_used: int, is_success: bool) -> None:
+        gas = self.gas_profile.setdefault(fn_name, {})
+        if not gas:
+            gas.update(
+                avg=gas_used, high=gas_used, low=gas_used, count=1, count_success=0, avg_success=0
+            )
+            if is_success:
+                gas["count_success"] = 1
+                gas["avg_success"] = gas_used
             return
-        gas = self.gas_profile[fn_name]
         gas.update(
-            {
-                "avg": (gas["avg"] * gas["count"] + gas_used) // (gas["count"] + 1),
-                "high": max(gas["high"], gas_used),
-                "low": min(gas["low"], gas_used),
-            }
+            avg=(gas["avg"] * gas["count"] + gas_used) // (gas["count"] + 1),
+            high=max(gas["high"], gas_used),
+            low=min(gas["low"], gas_used),
         )
         gas["count"] += 1
+        if is_success:
+            count = gas["count_success"]
+            gas["count_success"] += 1
+            if not gas["avg_success"]:
+                gas["avg_success"] = gas_used
+            else:
+                avg = gas["avg_success"]
+                gas["avg_success"] = (avg * count + gas_used) // (count + 1)
 
 
 class Chain(metaclass=_Singleton):
@@ -197,7 +203,7 @@ class Chain(metaclass=_Singleton):
         """
         Return the current number of blocks.
         """
-        return web3.eth.blockNumber + 1
+        return web3.eth.block_number + 1
 
     def __getitem__(self, block_number: int) -> BlockData:
         """
@@ -218,15 +224,15 @@ class Chain(metaclass=_Singleton):
         if not isinstance(block_number, int):
             raise TypeError("Block height must be given as an integer")
         if block_number < 0:
-            block_number = web3.eth.blockNumber + 1 + block_number
-        block = web3.eth.getBlock(block_number)
+            block_number = web3.eth.block_number + 1 + block_number
+        block = web3.eth.get_block(block_number)
         if block["timestamp"] > self._block_gas_time:
             self._block_gas_limit = block["gasLimit"]
             self._block_gas_time = block["timestamp"]
         return block
 
     def __iter__(self) -> Iterator:
-        return iter(web3.eth.getBlock(i) for i in range(web3.eth.blockNumber + 1))
+        return iter(web3.eth.get_block(i) for i in range(web3.eth.block_number + 1))
 
     def new_blocks(self, height_buffer: int = 0, poll_interval: int = 5) -> Iterator:
         """
@@ -249,9 +255,9 @@ class Chain(metaclass=_Singleton):
         last_poll = 0.0
 
         while True:
-            if last_poll + poll_interval < time.time() or last_height != web3.eth.blockNumber:
-                last_height = web3.eth.blockNumber
-                block = web3.eth.getBlock(last_height - height_buffer)
+            if last_poll + poll_interval < time.time() or last_height != web3.eth.block_number:
+                last_height = web3.eth.block_number
+                block = web3.eth.get_block(last_height - height_buffer)
                 last_poll = time.time()
 
                 if block != last_block:
@@ -262,41 +268,33 @@ class Chain(metaclass=_Singleton):
 
     @property
     def height(self) -> int:
-        return web3.eth.blockNumber
+        return web3.eth.block_number
 
     @property
     def id(self) -> int:
         if self._chainid is None:
-            self._chainid = web3.eth.chainId
+            self._chainid = web3.eth.chain_id
         return self._chainid
 
     @property
     def block_gas_limit(self) -> Wei:
         if time.time() > self._block_gas_time + 3600:
-            block = web3.eth.getBlock("latest")
+            block = web3.eth.get_block("latest")
             self._block_gas_limit = block["gasLimit"]
             self._block_gas_time = block["timestamp"]
         return Wei(self._block_gas_limit)
 
-    def _request(self, method: str, args: List) -> int:
-        try:
-            response = web3.provider.make_request(method, args)  # type: ignore
-            if "result" in response:
-                return response["result"]
-        except (AttributeError, RequestsConnectionError):
-            raise RPCRequestError("Web3 is not connected.")
-        raise RPCRequestError(response["error"]["message"])
-
-    def _snap(self) -> int:
-        return self._request("evm_snapshot", [])
-
     def _revert(self, id_: int) -> int:
-        if web3.isConnected() and not web3.eth.blockNumber and not self._time_offset:
+        rpc_client = rpc.Rpc()
+        if web3.isConnected() and not web3.eth.block_number and not self._time_offset:
             _notify_registry(0)
-            return self._snap()
-        self._request("evm_revert", [id_])
-        id_ = self._snap()
-        self.sleep(0)
+            return rpc_client.snapshot()
+        rpc_client.revert(id_)
+        id_ = rpc_client.snapshot()
+        try:
+            self.sleep(0)
+        except NotImplementedError:
+            pass
         _notify_registry()
         return id_
 
@@ -308,11 +306,15 @@ class Chain(metaclass=_Singleton):
                 self._redo_buffer.pop()
             else:
                 self._redo_buffer.clear()
-            self._current_id = self._snap()
+            self._current_id = rpc.Rpc().snapshot()
 
     def _network_connected(self) -> None:
         self._reset_id = None
-        self.reset()
+        try:
+            self.reset()
+        except NotImplementedError:
+            # required for geth dev
+            _notify_registry(0)
 
     def _network_disconnected(self) -> None:
         self._undo_buffer.clear()
@@ -347,11 +349,11 @@ class Chain(metaclass=_Singleton):
         """
         if not isinstance(seconds, int):
             raise TypeError("seconds must be an integer value")
-        self._time_offset = self._request("evm_increaseTime", [seconds])
+        self._time_offset = rpc.Rpc().sleep(seconds)
 
         if seconds:
             self._redo_buffer.clear()
-            self._current_id = self._snap()
+            self._current_id = rpc.Rpc().snapshot()
 
     def mine(self, blocks: int = 1, timestamp: int = None, timedelta: int = None) -> int:
         """
@@ -393,14 +395,14 @@ class Chain(metaclass=_Singleton):
             params = [[round(now + duration * i)] for i in range(blocks)]
 
         for i in range(blocks):
-            self._request("evm_mine", params[i])
+            rpc.Rpc().mine(*params[i])
 
         if timestamp is not None:
             self.sleep(0)
 
         self._redo_buffer.clear()
-        self._current_id = self._snap()
-        return web3.eth.blockNumber
+        self._current_id = rpc.Rpc().snapshot()
+        return web3.eth.block_number
 
     def snapshot(self) -> None:
         """
@@ -410,7 +412,7 @@ class Chain(metaclass=_Singleton):
         """
         self._undo_buffer.clear()
         self._redo_buffer.clear()
-        self._snapshot_id = self._current_id = self._snap()
+        self._snapshot_id = self._current_id = rpc.Rpc().snapshot()
 
     def revert(self) -> int:
         """
@@ -428,7 +430,7 @@ class Chain(metaclass=_Singleton):
         self._undo_buffer.clear()
         self._redo_buffer.clear()
         self._snapshot_id = self._current_id = self._revert(self._snapshot_id)
-        return web3.eth.blockNumber
+        return web3.eth.block_number
 
     def reset(self) -> int:
         """
@@ -445,11 +447,11 @@ class Chain(metaclass=_Singleton):
         self._undo_buffer.clear()
         self._redo_buffer.clear()
         if self._reset_id is None:
-            self._reset_id = self._current_id = self._snap()
+            self._reset_id = self._current_id = rpc.Rpc().snapshot()
             _notify_registry(0)
         else:
             self._reset_id = self._current_id = self._revert(self._reset_id)
-        return web3.eth.blockNumber
+        return web3.eth.block_number
 
     def undo(self, num: int = 1) -> int:
         """
@@ -478,7 +480,7 @@ class Chain(metaclass=_Singleton):
                 self._redo_buffer.append((fn, args, kwargs))
 
             self._current_id = self._revert(id_)
-            return web3.eth.blockNumber
+            return web3.eth.block_number
 
     def redo(self, num: int = 1) -> int:
         """
@@ -506,7 +508,7 @@ class Chain(metaclass=_Singleton):
                 fn, args, kwargs = self._redo_buffer.pop()
                 fn(*args, **kwargs)
 
-            return web3.eth.blockNumber
+            return web3.eth.block_number
 
 
 # objects that will update whenever the RPC is reset or reverted must register
@@ -519,7 +521,7 @@ def _revert_register(obj: object) -> None:
 def _notify_registry(height: int = None) -> None:
     gc.collect()
     if height is None:
-        height = web3.eth.blockNumber
+        height = web3.eth.block_number
     for ref in _revert_refs.copy():
         obj = ref()
         if obj is None:

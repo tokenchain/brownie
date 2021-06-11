@@ -47,6 +47,7 @@ def main():
     if project.check_for_project():
         active_project = project.load()
         active_project.load_config()
+        active_project._add_to_main_namespace()
         print(f"{active_project._name} is the active project.")
     else:
         active_project = None
@@ -85,7 +86,7 @@ class Console(code.InteractiveConsole):
     # replaced with `prompt_toolkit.input.defaults.create_pipe_input`
     prompt_input = None
 
-    def __init__(self, project=None, extra_locals=None):
+    def __init__(self, project=None, extra_locals=None, exit_on_continue=False):
         """
         Launch the Brownie console.
 
@@ -95,6 +96,9 @@ class Console(code.InteractiveConsole):
             Active Brownie project to include in the console's local namespace.
         extra_locals: dict, optional
             Additional variables to add to the console namespace.
+        exit_on_continue: bool, optional
+            If True, the `continue` command causes the console to
+            raise a SystemExit with error message "continue".
         """
         console_settings = CONFIG.settings["console"]
 
@@ -102,6 +106,11 @@ class Console(code.InteractiveConsole):
         locals_dict.update(
             _dir=dir, dir=self._dir, exit=_Quitter("exit"), quit=_Quitter("quit"), _console=self
         )
+
+        self.exit_on_continue = exit_on_continue
+        if exit_on_continue:
+            # add continue to the locals so we can quickly reach it via completion hints
+            locals_dict["continue"] = True
 
         if project:
             project._update_and_register(locals_dict)
@@ -218,6 +227,10 @@ class Console(code.InteractiveConsole):
         mode = self.compile_mode
         self.compile_mode = "single"
 
+        if source == "continue" and self.exit_on_continue:
+            # used to differentiate exit and continue for pytest interactive debugging
+            raise SystemExit("continue")
+
         try:
             code = self.compile(source, filename, mode)
         except (OverflowError, SyntaxError, ValueError):
@@ -235,8 +248,8 @@ class Console(code.InteractiveConsole):
             pass
         self.runcode(code)
         if "__ret_value__" in self.locals and self.locals["__ret_value__"] is not None:
-            self._console_write(self.locals["__ret_value__"])
-            del self.locals["__ret_value__"]
+            return_value = self.locals.pop("__ret_value__")
+            self._console_write(return_value)
         return False
 
     def paste_event(self, event):

@@ -434,12 +434,15 @@ class PytestBrownieRunner(PytestBrownieBase):
             tw = TerminalWriter()
             report.longrepr.toterminal(tw)
 
-            # find last traceback frame within the active test
-            excinfo = call.excinfo
-            traceback = next(
-                (i for i in excinfo.traceback[::-1] if Path(i.path).as_posix().endswith(location)),
-                excinfo.traceback[-1],
-            )
+            # find the last traceback frame within the active project
+            traceback = call.excinfo.traceback[-1]
+            for tb_frame in call.excinfo.traceback[::-1]:
+                try:
+                    Path(tb_frame.path).relative_to(self.project_path)
+                    traceback = tb_frame
+                    break
+                except ValueError:
+                    pass
 
             # get global namespace
             globals_dict = traceback.frame.f_globals
@@ -466,13 +469,15 @@ class PytestBrownieRunner(PytestBrownieBase):
 
             try:
                 CONFIG.argv["cli"] = "console"
-                shell = Console(self.project, extra_locals=namespace)
-                shell.interact(
-                    banner="\nInteractive mode enabled. Use quit() to continue running tests.",
-                    exitmsg="",
+                shell = Console(self.project, extra_locals=namespace, exit_on_continue=True)
+                banner = (
+                    "\nInteractive mode enabled. Type `continue` to"
+                    " resume testing or `quit()` to halt execution."
                 )
-            except SystemExit:
-                pass
+                shell.interact(banner=banner, exitmsg="")
+            except SystemExit as exc:
+                if exc.code != "continue":
+                    pytest.exit("Test execution halted due to SystemExit")
             finally:
                 CONFIG.argv["cli"] = "test"
 

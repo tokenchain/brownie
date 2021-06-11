@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/eth-brownie/brownie)
 
+## [1.14.6](https://github.com/eth-brownie/brownie/tree/v1.14.5) - 2021-04-20
+### Changed
+- Upgraded web3 dependency to version 5.18.0 ([#1064](https://github.com/eth-brownie/brownie/pull/1064))
+- Upgraded pytest dependency to version 6.2.3 ([#1065](https://github.com/eth-brownie/brownie/pull/1065))
+- Upgraded hypothesis dependency to version 6.10.0 ([#1066](https://github.com/eth-brownie/brownie/pull/1066))
+
+### Fixed
+- Issue with `BSCSCAN_TOKEN` ([#1062](https://github.com/eth-brownie/brownie/pull/1062))
+- Correctly load `.env` values ([#1063](https://github.com/eth-brownie/brownie/pull/1063))
+
+## [1.14.5](https://github.com/eth-brownie/brownie/tree/v1.14.5) - 2021-04-16
+### Added
+- Added documentation detailing how private Github repositories can be used as a package installation source.
+- Add passphrase kwarg to `Account.from_mnemonic` ([#1050](https://github.com/eth-brownie/brownie/pull/1050))
+
+### Changed
+- Include `chainId` field when signing transactions ([#1056](https://github.com/eth-brownie/brownie/pull/1056))
+
+### Fixed
+- Fixed a formatting issue on the new [environment variable section](https://eth-brownie.readthedocs.io/en/stable/config.html?highlight=POSIX-style#variable-expansion) ([#1038](https://github.com/eth-brownie/brownie/pull/1038))
+- Fixed Github package installation failing for private repositories ([#1055](https://github.com/eth-brownie/brownie/pull/1055)).
+- Adjusted Github API token error message so that it correctly emits when auth failure occurs ([#1052](https://github.com/eth-brownie/brownie/pull/1052))
+- Remove `__ret_value__` prior to writing console output ([#1057](https://github.com/eth-brownie/brownie/pull/1057))
+- Handle missing contract when generating transaction receipt ([#1058](https://github.com/eth-brownie/brownie/pull/1058))
+- `StopIteration` issues within receipts ([#1059](https://github.com/eth-brownie/brownie/pull/1059))
+- Do not cache `eth_newBlockFilter` ([#1061](https://github.com/eth-brownie/brownie/pull/1061))
+
+## [1.14.4](https://github.com/eth-brownie/brownie/tree/v1.14.4) - 2021-04-05
+### Added
+- Support for environment variables in brownie config ([#1012](https://github.com/eth-brownie/brownie/pull/1012))
+- Add Fantom to default networks ([#980](https://github.com/eth-brownie/brownie/pull/980))
+
+### Changed
+- Gas report also shows average price for only confirmed txs ([#1020](https://github.com/eth-brownie/brownie/pull/1020))
+
+### Fixed
+- Add project to brownie namespace within console ([#1029](https://github.com/eth-brownie/brownie/pull/1029))
+- Balance contract member override ([#1030](https://github.com/eth-brownie/brownie/pull/1030))
+- Correct frame in pytest interactive debug mode ([#1034](https://github.com/eth-brownie/brownie/pull/1034))
+
+## [1.14.3](https://github.com/eth-brownie/brownie/tree/v1.14.3) - 2021-03-27
+### Added
+- Support for `BSCSCAN_TOKEN` env var ([#1017](https://github.com/eth-brownie/brownie/pull/1017))
+
+### Fixed
+- Ensure node client supports filters before enabling caching middleware ([#1009](https://github.com/eth-brownie/brownie/pull/1009))
+- Support `abicoder v2` pragma when verifying source code ([#1018](https://github.com/eth-brownie/brownie/pull/1018))
+
+## [1.14.2](https://github.com/eth-brownie/brownie/tree/v1.14.2) - 2021-03-20
+### Fixed
+- Attaching to dockerized RPC-clients works on OSX without sudo ([#995](https://github.com/eth-brownie/brownie/pull/995))
+- Bug when calling `chain.mine` without a timestamp ([#1005](https://github.com/eth-brownie/brownie/pull/1005))
+
+## [1.14.1](https://github.com/eth-brownie/brownie/tree/v1.14.1) - 2021-03-19
+### Fixed
+- Improve logic around `eth_getCode` caching to consider selfdestruct via delegate call ([#1002](https://github.com/eth-brownie/brownie/pull/1002))
+- Standardize process of adding middlewares upon connection ([#1001](https://github.com/eth-brownie/brownie/pull/1001))
+
+## [1.14.0](https://github.com/eth-brownie/brownie/tree/v1.14.0) - 2021-03-18
+### Added
+- Generalized RPC logic allowing (limited) use of `geth --dev` as a local test network ([#998](https://github.com/eth-brownie/brownie/pull/998))
+- RPC call caching via web3 middleware ([#997](https://github.com/eth-brownie/brownie/pull/997))
+- Allow tests to target project outside the current working directory via `--brownie-project` cli flag ([#996](https://github.com/eth-brownie/brownie/pull/996))
+- Add BSC mainnet and fork-mode to default networks ([#961](https://github.com/eth-brownie/brownie/pull/961))
+
+### Changed
+- `export BROWNIE_LIB=1` to install brownie with soft pins. Also ensured hard pins for all dependencies are set. ([#993](https://github.com/eth-brownie/brownie/pull/993))
+
+## [1.13.4](https://github.com/eth-brownie/brownie/tree/v1.13.4) - 2021-03-14
+### Added
+- Detect EIP-1167 and Vyper minimal proxies ([#984](https://github.com/eth-brownie/brownie/pull/984))
+- Decode ds-note events ([#985](https://github.com/eth-brownie/brownie/pull/985))
+
+### Changed
+- During pytest interactive debugging , `continue` now exits the console to run the next test ([#989](https://github.com/eth-brownie/brownie/pull/989))
+
+### Fixed
+- Issue around the "optimizer revert" in solidity 0.8.2 ([#988](https://github.com/eth-brownie/brownie/pull/988))
+
 ## [1.13.3](https://github.com/eth-brownie/brownie/tree/v1.13.3) - 2021-03-08
 ### Added
 - Option to choose console editting mode ([#970](https://github.com/eth-brownie/brownie/pull/970))

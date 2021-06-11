@@ -3,7 +3,7 @@
 import pytest
 
 from brownie import compile_source
-from brownie.exceptions import IncompatibleEVMVersion, VirtualMachineError
+from brownie.exceptions import VirtualMachineError
 from brownie.network.contract import ProjectContract
 from brownie.network.transaction import TransactionReceipt
 
@@ -46,11 +46,11 @@ def test_gas_price_manual(BrownieTester, accounts):
 
 @pytest.mark.parametrize("auto", (True, False, None, "auto"))
 def test_gas_price_automatic(BrownieTester, accounts, config, web3, auto):
-    """gas price is set correctly using web3.eth.gasPrice"""
+    """gas price is set correctly using web3.eth.gas_price"""
     config.active_network["settings"]["gas_price"] = auto
     balance = accounts[0].balance()
     tx = accounts[0].deploy(BrownieTester, True).tx
-    assert tx.gas_price == web3.eth.gasPrice
+    assert tx.gas_price == web3.eth.gas_price
     assert accounts[0].balance() == balance - (tx.gas_price * tx.gas_used)
 
 
@@ -80,7 +80,7 @@ def test_gas_limit_manual(BrownieTester, accounts):
 
 @pytest.mark.parametrize("auto", (True, False, None, "auto"))
 def test_gas_limit_automatic(BrownieTester, accounts, config, auto):
-    """gas limit is set correctly using web3.eth.estimateGas"""
+    """gas limit is set correctly using web3.eth.estimate_gas"""
     config.active_network["settings"]["gas_limit"] = auto
     tx = accounts[0].deploy(BrownieTester, True).tx
     assert tx.gas_limit == tx.gas_used
@@ -117,12 +117,6 @@ def test_raises_on_wrong_nonce(BrownieTester, accounts, nonce):
     assert accounts[0].nonce == 0
     with pytest.raises(ValueError):
         accounts[0].deploy(BrownieTester, True, nonce=nonce)
-
-
-def test_evm_version(BrownieTester, accounts, monkeypatch):
-    monkeypatch.setattr("psutil.Popen.cmdline", lambda s: ["-k", "byzantium"])
-    with pytest.raises(IncompatibleEVMVersion):
-        accounts[0].deploy(BrownieTester, True)
 
 
 def test_selfdestruct_during_deploy(accounts):

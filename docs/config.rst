@@ -10,6 +10,8 @@ The configuration file must be saved as ``brownie-config.yaml``. If saved in the
 
 All configuration fields are optional. You can copy from the examples below and modify the settings as required.
 
+Configuration values can also be set using environment variables, as well as by specifying the `dotenv` top-level key.
+
 Default Configuration
 =====================
 
@@ -19,6 +21,23 @@ The following example shows all configuration settings and their default values:
     :linenos:
     :lines: 8-
     :language: yaml
+
+Variable Expansion
+==================
+
+Brownie supports POSIX-style variable expansion for environment variables.
+
+.. code-block:: yaml
+
+    networks:
+        default: ${DEFAULT_NETWORK}
+
+You can also provide defaults.
+
+.. code-block:: yaml
+
+    networks:
+        default: ${DEFAULT_NETWORK:-mainnet}
 
 Settings
 ========
@@ -116,7 +135,7 @@ Networks
 
     .. py:attribute:: gas_limit
 
-        The default gas limit for all transactions. If set to ``auto`` the gas limit is determined using ``web3.eth.estimateGas``. If set to ``max``, the block gas limit is used.
+        The default gas limit for all transactions. If set to ``auto`` the gas limit is determined using ``web3.eth.estimate_gas``. If set to ``max``, the block gas limit is used.
 
         development default: ``max``
 
@@ -124,7 +143,7 @@ Networks
 
     .. py:attribute:: gas_buffer
 
-        A modifier applied to ``web3.eth.estimateGas`` when determining gas price automatically.
+        A modifier applied to ``web3.eth.estimate_gas`` when determining gas price automatically.
 
         development default: ``1``
 
@@ -132,7 +151,7 @@ Networks
 
     .. py:attribute:: gas_price
 
-        The default gas price for all transactions. If set to ``auto`` the gas price is determined using ``web3.eth.gasPrice``.
+        The default gas price for all transactions. If set to ``auto`` the gas price is determined using ``web3.eth.gas_price``.
 
         development default: ``0``
 
@@ -267,6 +286,12 @@ Settings related to reports such as coverage data and gas profiles.
                 - SafeMath
                 - Owned
 
+.. py:attribute:: only_include_project
+
+    If ``false``, reports also include contracts imported from outside the active project (such as those compiled via :func:`compile_source <main.compile_source>`).
+
+    default value: ``true``
+
 .. _config-hypothesis:
 
 Hypothesis
@@ -319,3 +344,11 @@ Other Settings
     This is useful if another application, such as a front end framework, needs access to deployment artifacts while you are on a development network.
 
     default value: ``false``
+
+.. py:attribute:: dotenv
+
+    If present, Brownie will load the .env file, resolving the file relative to the project root. Will fail loudly if .env file is missing.
+
+    .. code-block:: yaml
+
+        dotenv: .env
