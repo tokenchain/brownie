@@ -25,7 +25,6 @@ from brownie.project.sources import highlight_source
 from brownie.test import coverage
 from brownie.utils import color
 from brownie.utils.output import build_tree
-
 from . import state
 from .event import EventDict, _decode_logs, _decode_trace
 from .web3 import web3
@@ -77,7 +76,6 @@ class Status(IntEnum):
 
 
 class TransactionReceipt:
-
     """Attributes and methods relating to a broadcasted transaction.
 
     * All ether values are given as integers denominated in wei.
@@ -127,14 +125,14 @@ class TransactionReceipt:
     txindex = None
 
     def __init__(
-        self,
-        txid: Union[str, bytes],
-        sender: Any = None,
-        silent: bool = True,
-        required_confs: int = 1,
-        is_blocking: bool = True,
-        name: str = "",
-        revert_data: Optional[Tuple] = None,
+            self,
+            txid: Union[str, bytes],
+            sender: Any = None,
+            silent: bool = True,
+            required_confs: int = 1,
+            is_blocking: bool = True,
+            name: str = "",
+            revert_data: Optional[Tuple] = None,
     ) -> None:
         """Instantiates a new TransactionReceipt object.
 
@@ -271,7 +269,8 @@ class TransactionReceipt:
     def subcalls(self) -> Optional[List]:
         if self._subcalls is None:
             self._expand_trace()
-        return self._subcalls
+        subcalls = filter(lambda s: not _is_call_to_data_copy(s), self._subcalls)  # type: ignore
+        return list(subcalls)
 
     @trace_property
     def trace(self) -> Optional[List]:
@@ -292,10 +291,10 @@ class TransactionReceipt:
         return web3.eth.block_number - self.block_number + 1
 
     def replace(
-        self,
-        increment: Optional[float] = None,
-        gas_price: Optional[Wei] = None,
-        silent: Optional[bool] = None,
+            self,
+            increment: Optional[float] = None,
+            gas_price: Optional[Wei] = None,
+            silent: Optional[bool] = None,
     ) -> "TransactionReceipt":
         """
         Rebroadcast this transaction with a higher gas price.
@@ -489,9 +488,9 @@ class TransactionReceipt:
         self._set_from_receipt(receipt)
         # if coverage evaluation is active, evaluate the trace
         if (
-            CONFIG.argv["coverage"]
-            and not coverage._check_cached(self.coverage_hash)
-            and self.trace
+                CONFIG.argv["coverage"]
+                and not coverage._check_cached(self.coverage_hash)
+                and self.trace
         ):
             self._expand_trace()
         if not self._silent and required_confs > 0:
@@ -500,7 +499,7 @@ class TransactionReceipt:
         # set the confirmation event and mark other tx's with the same nonce as dropped
         self._confirmed.set()
         for dropped_tx in state.TxHistory().filter(
-            sender=self.sender, nonce=self.nonce, key=lambda k: k != self
+                sender=self.sender, nonce=self.nonce, key=lambda k: k != self
         ):
             dropped_tx.status = Status(-2)
             dropped_tx._confirmed.set()
@@ -644,12 +643,17 @@ class TransactionReceipt:
             if step["op"] == "REVERT" and int(step["stack"][-2], 16):
                 # get returned error string from stack
                 data = _get_memory(step, -1)
-                if data[:4].hex() == "0x4e487b71":  # keccak of Panic(uint256)
+                selector = data[:4].hex()
+                if selector == "0x4e487b71":  # keccak of Panic(uint256)
                     error_code = int(data[4:].hex(), 16)
                     if error_code in SOLIDITY_ERROR_CODES:
                         self._revert_msg = SOLIDITY_ERROR_CODES[error_code]
                     else:
                         self._revert_msg = f"Panic (error code: {error_code})"
+                # solidity 0.8.4 errors
+                elif selector == "0x08c379a0":
+                    self._revert_msg = decode_abi(["string"], data[4:])[0]
+
                 else:
                     self._revert_msg = decode_abi(["string"], data[4:])[0]
 
@@ -709,7 +713,7 @@ class TransactionReceipt:
                         offset = step["source"]["offset"][1]
                         line = source[offset:].split("\n")[0]
                         marker = "//" if contract._build["language"] == "Solidity" else "#"
-                        revert_str = line[line.index(marker) + len(marker) :].strip()
+                        revert_str = line[line.index(marker) + len(marker):].strip()
                         if revert_str.startswith("dev:"):
                             self._dev_revert_msg = revert_str
 
@@ -774,10 +778,12 @@ class TransactionReceipt:
         # last_map gives a quick reference of previous values at each depth
         last_map = {0: _get_last_map(self.receiver, self.input[:10])}  # type: ignore
         coverage_eval: Dict = {last_map[0]["name"]: {}}
-
+        call_opcodes = ("CALL", "STATICCALL", "DELEGATECALL")
         for i in range(len(trace)):
             # if depth has increased, tx has called into a different contract
-            if trace[i]["depth"] > trace[i - 1]["depth"]:
+            is_depth_increase = trace[i]["depth"] > trace[i - 1]["depth"]
+            is_subcall = trace[i - 1]["op"] in call_opcodes
+            if is_depth_increase or is_subcall:
                 step = trace[i - 1]
                 if step["op"] in ("CREATE", "CREATE2"):
                     # creating a new contract
@@ -793,19 +799,20 @@ class TransactionReceipt:
                     stack_idx = -4 if step["op"] in ("CALL", "CALLCODE") else -3
                     offset = int(step["stack"][stack_idx], 16)
                     length = int(step["stack"][stack_idx - 1], 16)
-                    calldata = HexBytes("".join(step["memory"]))[offset : offset + length]
+                    calldata = HexBytes("".join(step["memory"]))[offset: offset + length]
                     sig = calldata[:4].hex()
                     address = step["stack"][-2][-40:]
 
-                last_map[trace[i]["depth"]] = _get_last_map(address, sig)
-                coverage_eval.setdefault(last_map[trace[i]["depth"]]["name"], {})
+                if is_depth_increase:
+                    last_map[trace[i]["depth"]] = _get_last_map(address, sig)
+                    coverage_eval.setdefault(last_map[trace[i]["depth"]]["name"], {})
 
                 self._subcalls.append(
                     {"from": step["address"], "to": EthAddress(address), "op": step["op"]}
                 )
                 if step["op"] in ("CALL", "CALLCODE"):
                     self._subcalls[-1]["value"] = int(step["stack"][-3], 16)
-                if calldata and last_map[trace[i]["depth"]].get("function"):
+                if is_depth_increase and calldata and last_map[trace[i]["depth"]].get("function"):
                     fn = last_map[trace[i]["depth"]]["function"]
                     self._subcalls[-1]["function"] = fn._input_sig
                     try:
@@ -814,8 +821,8 @@ class TransactionReceipt:
                         self._subcalls[-1]["inputs"] = inputs
                     except Exception:
                         self._subcalls[-1]["calldata"] = calldata.hex()
-                elif calldata:
-                    self._subcalls[-1]["calldata"] = calldata.hex()
+                elif calldata or is_subcall:
+                    self._subcalls[-1]["calldata"] = calldata.hex()  # type: ignore
 
             # update trace from last_map
             last = last_map[trace[i]["depth"]]
@@ -1057,7 +1064,7 @@ class TransactionReceipt:
 
             if depth > last[1]:
                 # called to a new contract
-                end = next((x[0] for x in trace_index[i + 1 :] if x[1] < depth), len(trace))
+                end = next((x[0] for x in trace_index[i + 1:] if x[1] < depth), len(trace))
                 total_gas, internal_gas = self._get_trace_gas(idx, end)
                 key = _step_external(
                     trace[idx],
@@ -1073,7 +1080,7 @@ class TransactionReceipt:
                 end = next(
                     (
                         x[0]
-                        for x in trace_index[i + 1 :]
+                        for x in trace_index[i + 1:]
                         if x[1] < depth or (x[1] == depth and x[2] < jump_depth)
                     ),
                     len(trace),
@@ -1212,12 +1219,12 @@ def _step_compare(a: Dict, b: Dict) -> bool:
 
 
 def _step_internal(
-    step: Dict,
-    last_step: Dict,
-    start: Union[str, int],
-    stop: Union[str, int],
-    gas: Tuple[int, int],
-    subcall: Dict = None,
+        step: Dict,
+        last_step: Dict,
+        start: Union[str, int],
+        stop: Union[str, int],
+        gas: Tuple[int, int],
+        subcall: Dict = None,
 ) -> str:
     if last_step["op"] in {"REVERT", "INVALID"} and _step_compare(step, last_step):
         contract_color = color("bright red")
@@ -1269,13 +1276,13 @@ def _format(value: Any) -> str:
 
 
 def _step_external(
-    step: Dict,
-    last_step: Dict,
-    start: Union[str, int],
-    stop: Union[str, int],
-    gas: Tuple[int, int],
-    subcall: Dict,
-    expand: bool,
+        step: Dict,
+        last_step: Dict,
+        start: Union[str, int],
+        stop: Union[str, int],
+        gas: Tuple[int, int],
+        subcall: Dict,
+        expand: bool,
 ) -> str:
     key = _step_internal(step, last_step, start, stop, gas, subcall)
     if not expand:
@@ -1315,10 +1322,14 @@ def _step_external(
 def _get_memory(step: Dict, idx: int) -> HexBytes:
     offset = int(step["stack"][idx], 16)
     length = int(step["stack"][idx - 1], 16)
-    data = HexBytes("".join(step["memory"]))[offset : offset + length]
+    data = HexBytes("".join(step["memory"]))[offset: offset + length]
     # append zero-bytes if allocated memory ends before `length` bytes
     data = HexBytes(data + b"\x00" * (length - len(data)))
     return data
+
+
+def _is_call_to_data_copy(subcall: dict) -> bool:
+    return str(subcall["to"]) == "0x0000000000000000000000000000000000000004"
 
 
 def _get_last_map(address: EthAddress, sig: str) -> Dict:
